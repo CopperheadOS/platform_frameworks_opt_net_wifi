@@ -470,9 +470,10 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mWifiController = mWifiInjector.getWifiController();
         mWifiBackupRestore = mWifiInjector.getWifiBackupRestore();
         mWifiApConfigStore = mWifiInjector.getWifiApConfigStore();
-        mPermissionReviewRequired = Build.PERMISSIONS_REVIEW_REQUIRED
-                || context.getResources().getBoolean(
-                com.android.internal.R.bool.config_permissionReviewRequired);
+        //mPermissionReviewRequired = Build.PERMISSIONS_REVIEW_REQUIRED
+        //        || context.getResources().getBoolean(
+        //        com.android.internal.R.bool.config_permissionReviewRequired);
+        mPermissionReviewRequired = false;
         mWifiPermissionsUtil = mWifiInjector.getWifiPermissionsUtil();
         mLog = mWifiInjector.makeLog(TAG);
         mFrameworkFacade = wifiInjector.getFrameworkFacade();

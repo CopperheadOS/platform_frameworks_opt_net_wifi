@@ -167,8 +167,7 @@ class WifiBackupDataV1Parser implements WifiBackupDataParser {
                 in, WifiBackupRestore.XML_TAG_SECTION_HEADER_WIFI_CONFIGURATION,
                 networkTagDepth);
         int configTagDepth = networkTagDepth + 1;
-        configuration = parseWifiConfigurationFromXmlAndValidateConfigKey(in, configTagDepth,
-                minorVersion);
+        configuration = parseWifiConfigurationFromXml(in, configTagDepth, minorVersion);
         if (configuration == null) {
             return null;
         }
@@ -182,12 +181,12 @@ class WifiBackupDataV1Parser implements WifiBackupDataParser {
     }
 
     /**
-     * Helper method to parse the WifiConfiguration object and validate the configKey parsed.
+     * Helper method to parse the WifiConfiguration object.
      */
-    private WifiConfiguration parseWifiConfigurationFromXmlAndValidateConfigKey(XmlPullParser in,
+    private WifiConfiguration parseWifiConfigurationFromXml(XmlPullParser in,
             int outerTagDepth, int minorVersion) throws XmlPullParserException, IOException {
         Pair<String, WifiConfiguration> parsedConfig =
-                parseWifiConfigurationFromXml(in, outerTagDepth, minorVersion);
+                parseWifiConfigurationFromXmlInternal(in, outerTagDepth, minorVersion);
         if (parsedConfig == null || parsedConfig.first == null || parsedConfig.second == null) {
             return null;
         }
@@ -195,17 +194,10 @@ class WifiBackupDataV1Parser implements WifiBackupDataParser {
         WifiConfiguration configuration = parsedConfig.second;
         String configKeyCalculated = configuration.configKey();
         if (!configKeyParsed.equals(configKeyCalculated)) {
-            String configKeyMismatchLog =
-                    "Configuration key does not match. Retrieved: " + configKeyParsed
-                            + ", Calculated: " + configKeyCalculated;
-            if (configuration.shared) {
-                Log.e(TAG, configKeyMismatchLog);
-                return null;
-            } else {
-                // ConfigKey mismatches are expected for private networks because the
-                // UID is not preserved across backup/restore.
-                Log.w(TAG, configKeyMismatchLog);
-            }
+            // configKey is not part of the SDK. So, we can't expect this to be the same
+            // across OEM's. Just log a warning & continue.
+            Log.w(TAG, "Configuration key does not match. Retrieved: " + configKeyParsed
+                    + ", Calculated: " + configKeyCalculated);
         }
         return configuration;
     }
@@ -269,8 +261,9 @@ class WifiBackupDataV1Parser implements WifiBackupDataParser {
      * @param minorVersion  minor version number parsed from incoming data.
      * @return Pair<Config key, WifiConfiguration object> if parsing is successful, null otherwise.
      */
-    private static Pair<String, WifiConfiguration> parseWifiConfigurationFromXml(XmlPullParser in,
-            int outerTagDepth, int minorVersion) throws XmlPullParserException, IOException {
+    private static Pair<String, WifiConfiguration> parseWifiConfigurationFromXmlInternal(
+            XmlPullParser in, int outerTagDepth, int minorVersion)
+            throws XmlPullParserException, IOException {
         WifiConfiguration configuration = new WifiConfiguration();
         String configKeyInData = null;
         Set<String> supportedTags = getSupportedWifiConfigurationTags(minorVersion);

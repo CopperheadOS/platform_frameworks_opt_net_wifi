@@ -2259,6 +2259,35 @@ public class WifiVendorHalTest {
     }
 
     /**
+     * Test the selectTxPowerScenario HIDL method invocation with no sensor support, but with
+     * SAP and voice call support.
+     * When earpiece is active, should result in cell with near head scenario
+     * Using IWifiChip 1.2 interface
+     */
+    @Test
+    public void testEarPieceScenarios_SelectTxPowerV1_2() throws RemoteException {
+        // Create a SAR info record (with sensor and SAP support)
+        SarInfo sarInfo = new SarInfo();
+        sarInfo.sarVoiceCallSupported = true;
+        sarInfo.sarSapSupported = true;
+        sarInfo.sarSensorSupported = false;
+
+        sarInfo.isEarPieceActive = true;
+
+        // Expose the 1.2 IWifiChip.
+        mWifiVendorHal = new WifiVendorHalSpyV1_2(mHalDeviceManager, mLooper.getLooper());
+        when(mIWifiChipV12.selectTxPowerScenario_1_2(anyInt())).thenReturn(mWifiStatusSuccess);
+
+        // ON_HEAD_CELL_ON
+        assertTrue(mWifiVendorHal.startVendorHalSta());
+        assertTrue(mWifiVendorHal.selectTxPowerScenario(sarInfo));
+        verify(mIWifiChipV12).selectTxPowerScenario_1_2(
+                eq(android.hardware.wifi.V1_2.IWifiChip.TxPowerScenario.ON_HEAD_CELL_ON));
+        verify(mIWifiChipV12, never()).resetTxPowerScenario();
+        mWifiVendorHal.stopVendorHal();
+    }
+
+    /**
      * Test the selectTxPowerScenario HIDL method invocation with sensor related scenarios
      * to IWifiChip 1.2 interface
      */

@@ -20,12 +20,18 @@ import static android.telephony.TelephonyManager.CALL_STATE_IDLE;
 import static android.telephony.TelephonyManager.CALL_STATE_OFFHOOK;
 import static android.telephony.TelephonyManager.CALL_STATE_RINGING;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.media.AudioManager;
+import android.media.AudioSystem;
 import android.net.wifi.WifiManager;
+import android.os.Handler;
 import android.os.Looper;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
@@ -33,6 +39,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.internal.R;
+import com.android.server.wifi.util.WifiHandler;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -49,6 +56,8 @@ import java.util.List;
  * - It constructs the sar info and send it towards the HAL
  */
 public class SarManager {
+    // Period for checking on voice steam active (in ms)
+    private static final int CHECK_VOICE_STREAM_INTERVAL_MS = 5000;
     /* For Logging */
     private static final String TAG = "WifiSarManager";
     private boolean mVerboseLoggingEnabled = true;
@@ -66,6 +75,10 @@ public class SarManager {
     private int mSarSensorEventNearHand;
     private int mSarSensorEventNearHead;
 
+    // Device starts with screen on
+    private boolean mScreenOn = false;
+    private boolean mIsVoiceStreamCheckEnabled = false;
+
     /**
      * Other parameters passed in or created in the constructor.
      */
@@ -75,6 +88,7 @@ public class SarManager {
     private final WifiNative mWifiNative;
     private final SarSensorEventListener mSensorListener;
     private final SensorManager mSensorManager;
+    private final Handler mHandler;
     private final Looper mLooper;
 
     /**
@@ -89,6 +103,7 @@ public class SarManager {
         mTelephonyManager = telephonyManager;
         mWifiNative = wifiNative;
         mLooper = looper;
+        mHandler = new WifiHandler(TAG, looper);
         mSensorManager = sensorManager;
         mPhoneStateListener = new WifiPhoneStateListener(looper);
         mSensorListener = new SarSensorEventListener();
@@ -98,6 +113,80 @@ public class SarManager {
             mSarInfo = new SarInfo();
             setSarConfigsInInfo();
             registerListeners();
+        }
+    }
+
+    /**
+     * Notify SarManager of screen status change
+     */
+    public void handleScreenStateChanged(boolean screenOn) {
+        if (!mSupportSarVoiceCall) {
+            return;
+        }
+
+        if (mScreenOn == screenOn) {
+            return;
+        }
+
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "handleScreenStateChanged: screenOn = " + screenOn);
+        }
+
+        mScreenOn = screenOn;
+
+        // Only schedule a voice stream check if screen is turning on, and it is currently not
+        // scheduled
+        if (mScreenOn && !mIsVoiceStreamCheckEnabled) {
+            mHandler.post(() -> {
+                checkAudioDevice();
+            });
+
+            mIsVoiceStreamCheckEnabled = true;
+        }
+    }
+
+    private boolean isVoiceCallOnEarpiece() {
+        AudioManager audioManager = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
+
+        return (audioManager.getDevicesForStream(AudioManager.STREAM_VOICE_CALL)
+                == AudioManager.DEVICE_OUT_EARPIECE);
+    }
+
+    private boolean isVoiceCallStreamActive() {
+        return AudioSystem.isStreamActive(AudioManager.STREAM_VOICE_CALL, 0);
+    }
+
+    private void checkAudioDevice() {
+        // First Check if audio stream is on
+        boolean voiceStreamActive = isVoiceCallStreamActive();
+        boolean earPieceActive;
+
+        if (voiceStreamActive) {
+            // Check on the audio route
+            earPieceActive = isVoiceCallOnEarpiece();
+
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "EarPiece active = " + earPieceActive);
+            }
+        } else {
+            earPieceActive = false;
+        }
+
+        // If audio route has changed, update SAR
+        if (earPieceActive != mSarInfo.isEarPieceActive) {
+            mSarInfo.isEarPieceActive = earPieceActive;
+            updateSarScenario();
+        }
+
+        // Now should we proceed with the checks
+        if (!mScreenOn && !voiceStreamActive) {
+            // No need to continue checking
+            mIsVoiceStreamCheckEnabled = false;
+        } else {
+            // Schedule another check
+            mHandler.postDelayed(() -> {
+                checkAudioDevice();
+            }, CHECK_VOICE_STREAM_INTERVAL_MS);
         }
     }
 
@@ -145,6 +234,7 @@ public class SarManager {
         if (mSupportSarVoiceCall) {
             /* Listen for Phone State changes */
             registerPhoneStateListener();
+            registerVoiceStreamListener();
         }
 
         /* Only listen for SAR sensor if supported */
@@ -157,6 +247,56 @@ public class SarManager {
                 mSarInfo.sensorState = SarInfo.SAR_SENSOR_NEAR_HEAD;
             }
         }
+    }
+
+    private void registerVoiceStreamListener() {
+        Log.i(TAG, "Registering for voice stream status");
+
+        // Register for listening to transitions of change of voice stream devices
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(AudioManager.STREAM_DEVICES_CHANGED_ACTION);
+
+        mContext.registerReceiver(
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        boolean voiceStreamActive = isVoiceCallStreamActive();
+                        if (!voiceStreamActive) {
+                            // No need to proceed, there is no voice call ongoing
+                            return;
+                        }
+
+                        String action = intent.getAction();
+                        int streamType =
+                                intent.getIntExtra(AudioManager.EXTRA_VOLUME_STREAM_TYPE, -1);
+                        int device = intent.getIntExtra(
+                                AudioManager.EXTRA_VOLUME_STREAM_DEVICES, -1);
+                        int oldDevice = intent.getIntExtra(
+                                AudioManager.EXTRA_PREV_VOLUME_STREAM_DEVICES, -1);
+
+                        if (streamType == AudioManager.STREAM_VOICE_CALL) {
+                            boolean earPieceActive = mSarInfo.isEarPieceActive;
+                            if (device == AudioManager.DEVICE_OUT_EARPIECE) {
+                                if (mVerboseLoggingEnabled) {
+                                    Log.d(TAG, "Switching to earpiece : HEAD ON");
+                                    Log.d(TAG, "Old device = " + oldDevice);
+                                }
+                                earPieceActive = true;
+                            } else if (oldDevice == AudioManager.DEVICE_OUT_EARPIECE) {
+                                if (mVerboseLoggingEnabled) {
+                                    Log.d(TAG, "Switching from earpiece : HEAD OFF");
+                                    Log.d(TAG, "New device = " + device);
+                                }
+                                earPieceActive = false;
+                            }
+
+                            if (earPieceActive != mSarInfo.isEarPieceActive) {
+                                mSarInfo.isEarPieceActive = earPieceActive;
+                                updateSarScenario();
+                            }
+                        }
+                    }
+                }, filter, null, mHandler);
     }
 
     /**
@@ -277,6 +417,10 @@ public class SarManager {
         /* Report change to HAL if needed */
         if (mSarInfo.isVoiceCall != newIsVoiceCall) {
             mSarInfo.isVoiceCall = newIsVoiceCall;
+
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Voice Call = " + newIsVoiceCall);
+            }
             updateSarScenario();
         }
     }

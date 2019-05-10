@@ -231,6 +231,21 @@ public class SarInfoTest {
     }
 
     /**
+     * Test a change in earpiece status, shouldReport should return true
+     * Note: will need to report once before making the change to remove
+     * the effect of sensor state change.
+     */
+    @Test
+    public void testSarInfo_earpiece_wifi_enabled() throws Exception {
+        mSarInfo.isWifiClientEnabled = true;
+        assertTrue(mSarInfo.shouldReport());
+        mSarInfo.reportingSuccessful();
+
+        mSarInfo.isEarPieceActive = true;
+        assertTrue(mSarInfo.shouldReport());
+    }
+
+    /**
      * Test starting SAP, shouldReport should return true
      * Note: will need to report once before starting SAP to remove
      * the effect of sensor state change.

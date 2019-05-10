@@ -74,6 +74,7 @@ public class SarInfo {
     public boolean isWifiSapEnabled = false;
     public boolean isWifiScanOnlyEnabled = false;
     public boolean isVoiceCall = false;
+    public boolean isEarPieceActive = false;
     public int attemptedSarScenario = RESET_SAR_SCENARIO;
 
     private boolean mAllWifiDisabled = true;
@@ -82,6 +83,7 @@ public class SarInfo {
     private int mLastReportedSensorState = SAR_SENSOR_FREE_SPACE;
     private boolean mLastReportedIsWifiSapEnabled = false;
     private boolean mLastReportedIsVoiceCall = false;
+    private boolean mLastReportedIsEarPieceActive = false;
     private int mLastReportedScenario = INITIAL_SAR_SCENARIO;
     private long mLastReportedScenarioTs = 0;
 
@@ -113,7 +115,8 @@ public class SarInfo {
         /* Check if some change happened since last successful reporting */
         if ((sensorState != mLastReportedSensorState)
                 || (isWifiSapEnabled != mLastReportedIsWifiSapEnabled)
-                || (isVoiceCall != mLastReportedIsVoiceCall)) {
+                || (isVoiceCall != mLastReportedIsVoiceCall)
+                || (isEarPieceActive != mLastReportedIsEarPieceActive)) {
             return true;
         } else {
             return false;
@@ -129,6 +132,7 @@ public class SarInfo {
         mLastReportedSensorState = sensorState;
         mLastReportedIsWifiSapEnabled = isWifiSapEnabled;
         mLastReportedIsVoiceCall = isVoiceCall;
+        mLastReportedIsEarPieceActive = isEarPieceActive;
         mLastReportedScenario = attemptedSarScenario;
         mLastReportedScenarioTs = System.currentTimeMillis();
 
@@ -169,10 +173,12 @@ public class SarInfo {
         pw.println("    Wifi Client state is: " + isWifiClientEnabled);
         pw.println("    Wifi Soft AP state is: " + isWifiSapEnabled);
         pw.println("    Wifi ScanOnly state is: " + isWifiScanOnlyEnabled);
+        pw.println("    Earpiece state is : " + isEarPieceActive);
         pw.println("Last reported values:");
         pw.println("    Sensor state is: " + sensorStateToString(mLastReportedSensorState));
         pw.println("    Soft AP state is: " + mLastReportedIsWifiSapEnabled);
         pw.println("    Voice Call state is: " + mLastReportedIsVoiceCall);
+        pw.println("    Earpiece state is: " + mLastReportedIsEarPieceActive);
         pw.println("Last reported scenario: " + mLastReportedScenario);
         pw.println("Reported " +  (System.currentTimeMillis() - mLastReportedScenarioTs) / 1000
                 + " seconds ago");

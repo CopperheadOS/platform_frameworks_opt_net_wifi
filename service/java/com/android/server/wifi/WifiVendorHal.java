@@ -2664,7 +2664,7 @@ public class WifiVendorHal {
         /* As long as no voice call is active (in case voice call is supported),
          * no backoff is needed */
         if (sarInfo.sarVoiceCallSupported) {
-            return sarInfo.isVoiceCall;
+            return (sarInfo.isVoiceCall || sarInfo.isEarPieceActive);
         } else {
             return false;
         }
@@ -2679,7 +2679,7 @@ public class WifiVendorHal {
      * Otherwise, an exception is thrown.
      */
     private int frameworkToHalTxPowerScenario_1_1(SarInfo sarInfo) {
-        if (sarInfo.sarVoiceCallSupported && sarInfo.isVoiceCall) {
+        if (sarInfo.sarVoiceCallSupported && (sarInfo.isVoiceCall || sarInfo.isEarPieceActive)) {
             return android.hardware.wifi.V1_1.IWifiChip.TxPowerScenario.VOICE_CALL;
         } else {
             throw new IllegalArgumentException("bad scenario: voice call not active/supported");
@@ -2703,7 +2703,7 @@ public class WifiVendorHal {
         if (sarInfo.sarSapSupported && sarInfo.isWifiSapEnabled) {
             return true;
         }
-        if (sarInfo.sarVoiceCallSupported && sarInfo.isVoiceCall) {
+        if (sarInfo.sarVoiceCallSupported && (sarInfo.isVoiceCall || sarInfo.isEarPieceActive)) {
             return true;
         }
         return false;
@@ -2752,7 +2752,7 @@ public class WifiVendorHal {
                     throw new IllegalArgumentException("bad scenario: Invalid sensor state");
             }
         } else if (sarInfo.sarSapSupported && sarInfo.sarVoiceCallSupported) {
-            if (sarInfo.isVoiceCall) {
+            if (sarInfo.isVoiceCall || sarInfo.isEarPieceActive) {
                 return android.hardware.wifi.V1_2.IWifiChip
                         .TxPowerScenario.ON_HEAD_CELL_ON;
             } else if (sarInfo.isWifiSapEnabled) {
@@ -2763,7 +2763,7 @@ public class WifiVendorHal {
             }
         } else if (sarInfo.sarVoiceCallSupported) {
             /* SAR Sensors and SoftAP not supported, act like V1_1 */
-            if (sarInfo.isVoiceCall) {
+            if (sarInfo.isVoiceCall || sarInfo.isEarPieceActive) {
                 return android.hardware.wifi.V1_1.IWifiChip.TxPowerScenario.VOICE_CALL;
             } else {
                 throw new IllegalArgumentException("bad scenario: voice call not active");
